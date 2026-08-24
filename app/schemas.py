@@ -37,3 +37,13 @@ class BookListItem(BookRead):
 
 class BookDetail(BookRead):
     notes: list[NoteRead]
+
+
+class BookImportError(BaseModel):
+    row: int
+    reason: str
+
+
+class BookImportResult(BaseModel):
+    imported: list[BookRead]
+    errors: list[BookImportError]
