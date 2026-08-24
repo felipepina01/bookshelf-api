@@ -22,6 +22,10 @@ class Book(Base):
         back_populates="book", cascade="all, delete-orphan"
     )
 
+    @property
+    def added_on(self) -> datetime:
+        return self.created_at
+
 
 class Note(Base):
     __tablename__ = "notes"

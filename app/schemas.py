@@ -28,7 +28,7 @@ class BookRead(BaseModel):
     id: int
     title: str
     author: str
-    created_at: datetime
+    added_on: datetime
 
 
 class BookListItem(BookRead):
