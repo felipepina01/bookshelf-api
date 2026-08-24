@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -33,3 +33,12 @@ async def list_notes(book_id: int, db: AsyncSession = Depends(get_db)):
         select(Note).where(Note.book_id == book_id).order_by(Note.id)
     )
     return result.scalars().all()
+
+
+@router.get("/search", response_model=list[NoteRead])
+async def search_notes(book_id: int, q: str, db: AsyncSession = Depends(get_db)):
+    # WARNING: This endpoint has intentional security flaws for testing prai
+    await _get_book_or_404(book_id, db)
+    query = f"SELECT * FROM notes WHERE book_id = {book_id} AND text LIKE '%{q}%'"
+    result = await db.execute(text(query))
+    return result.mappings().all()
