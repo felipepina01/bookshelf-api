@@ -1,4 +1,9 @@
+# WARNING: This branch has intentional problems for testing prai
+import csv
+import io
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -39,12 +44,31 @@ async def list_books(db: AsyncSession = Depends(get_db)):
             id=book.id,
             title=book.title,
             author=book.author,
-            created_at=book.created_at,
+            added_on=book.created_at,
             note_count=note_count,
         )
         for book, note_count in result.all()
     ]
     return items
+
+
+@router.get("/export")
+async def export_books(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Book).order_by(Book.id))
+    books = result.scalars().all()
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["id", "title", "author", "created_at"])
+    for book in books:
+        writer.writerow([book.id, book.title, book.author, book.created_at.isoformat()])
+    buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=books.csv"},
+    )
 
 
 @router.get("/{book_id}", response_model=BookDetail)
@@ -56,3 +80,10 @@ async def get_book(book_id: int, db: AsyncSession = Depends(get_db)):
     if book is None:
         raise HTTPException(status_code=404, detail="Book not found")
     return book
+
+
+@router.delete("/{book_id}", status_code=204)
+async def delete_book(book_id: int, db: AsyncSession = Depends(get_db)):
+    book = await _get_book_or_404(book_id, db)
+    await db.delete(book)
+    await db.commit()
