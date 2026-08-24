@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -56,3 +56,64 @@ async def get_book(book_id: int, db: AsyncSession = Depends(get_db)):
     if book is None:
         raise HTTPException(status_code=404, detail="Book not found")
     return book
+
+
+# WARNING: This branch has intentional pattern deviations for testing prai
+#
+# Tags are deliberately implemented without a SQLAlchemy model, without
+# Pydantic schemas, and without a dedicated router file, using raw SQL
+# instead of the ORM.
+
+async def _ensure_tags_table(db: AsyncSession) -> None:
+    await db.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS tags ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "book_id INTEGER NOT NULL, "
+            "tag TEXT NOT NULL)"
+        )
+    )
+
+
+@router.post("/{book_id}/tags")
+async def add_tag(book_id: int, payload: dict, db: AsyncSession = Depends(get_db)):
+    await _get_book_or_404(book_id, db)
+    await _ensure_tags_table(db)
+
+    tag = payload.get("tag")
+    if not tag or not isinstance(tag, str):
+        raise HTTPException(status_code=400, detail="tag is required")
+
+    result = await db.execute(
+        text("INSERT INTO tags (book_id, tag) VALUES (:book_id, :tag)"),
+        {"book_id": book_id, "tag": tag},
+    )
+    await db.commit()
+    return {"id": result.lastrowid, "book_id": book_id, "tag": tag}
+
+
+@router.get("/{book_id}/tags")
+async def list_tags(book_id: int, db: AsyncSession = Depends(get_db)):
+    await _get_book_or_404(book_id, db)
+    await _ensure_tags_table(db)
+
+    result = await db.execute(
+        text("SELECT id, book_id, tag FROM tags WHERE book_id = :book_id"),
+        {"book_id": book_id},
+    )
+    return [{"id": row.id, "book_id": row.book_id, "tag": row.tag} for row in result.fetchall()]
+
+
+@router.delete("/{book_id}/tags/{tag_id}")
+async def delete_tag(book_id: int, tag_id: int, db: AsyncSession = Depends(get_db)):
+    await _get_book_or_404(book_id, db)
+    await _ensure_tags_table(db)
+
+    result = await db.execute(
+        text("DELETE FROM tags WHERE id = :tag_id AND book_id = :book_id"),
+        {"tag_id": tag_id, "book_id": book_id},
+    )
+    await db.commit()
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    return {"deleted": True}
